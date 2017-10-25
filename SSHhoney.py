@@ -121,7 +121,7 @@ class SSHChecker(checkers.InMemoryUsernamePasswordDatabaseDontUse):
 		except IOError:
 			pass
 
-		# User authentication is implemented below		
+		# User authentication is implemented below	
 		if self.authorizedUsers.get(credentials.username) == None:
 			return failure.Failure(UnauthorizedLogin)	# Authentication failure
 
@@ -152,7 +152,8 @@ sshFactory.publicKeys = {'ssh-rsa': pubKey}
 sshFactory.privateKeys = {'ssh-rsa': privKey}
 
 # Define username and password combos that will allow access to our shell
-users = {'admin': 'aaa'}
+# Let it be empty so all attempts are failed
+users = {}
 
 # Register our Credentials Checker
 sshFactory.portal.registerChecker(SSHChecker(users))
