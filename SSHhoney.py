@@ -6,9 +6,6 @@ from twisted.cred import portal, checkers
 from twisted.internet import reactor
 from zope.interface import implements
 
-logfile1 = "./login.csv"
-logfile2 = "./commands.dat"
-
 
 class SSHDemoProtocol(recvline.HistoricRecvLine):
 	def __init__(self, user):
@@ -110,11 +107,29 @@ class SSHDemoRealm(object):
 class SSHChecker(checkers.InMemoryUsernamePasswordDatabaseDontUse):
 		
 	def __init__(self, users):
-		self.authorizedUsers = users
-		print self.authorizedUsers
+		self.authorizedUsers = users	# Username and password combos that will allow access to our shell
+
 	
 	def requestAvatarId(self, credentials):
-		print credentials.username, credentials.password
+		#print credentials.username, credentials.password
+
+		# Save all login attempts to file
+		try:
+			lfile = open("./LoginLogs.csv", 'a')
+			lfile.write(credentials.username + ", " + credentials.password + "\n")
+			lfile.close()
+		except IOError:
+			pass
+
+		# User authentication is implemented below		
+		if self.authorizedUsers.get(credentials.username) == None:
+			return failure.Failure(UnauthorizedLogin)	# Authentication failure
+
+		elif self.authorizedUsers.get(credentials.username) == credentials.password:
+			return credentials.username	# Authentication success
+
+		else:
+			return failure.Failure(UnauthorizedLogin)	# Authentication failure
 
 
 def getRSAKeys():
@@ -127,14 +142,21 @@ def getRSAKeys():
 	return publicKey, privateKey
 
 
-if __name__ == "__main__":
-	sshFactory = factory.SSHFactory()
-	sshFactory.portal = portal.Portal(SSHDemoRealm())
-	pubKey, privKey = getRSAKeys()
-	sshFactory.publicKeys = {'ssh-rsa': pubKey}
-	sshFactory.privateKeys = {'ssh-rsa': privKey}
-	#sshFactory.portal.registerChecker(checkers.InMemoryUsernamePasswordDatabaseDontUse(**users))
-	users = {'admin': 'aaa'}
-	sshFactory.portal.registerChecker(SSHChecker(users))
-	reactor.listenTCP(2222, sshFactory)
-	reactor.run()
+# Initialize Twisted's protocol factory
+sshFactory = factory.SSHFactory()
+sshFactory.portal = portal.Portal(SSHDemoRealm())
+
+# Setup the server's public and private keys
+pubKey, privKey = getRSAKeys()
+sshFactory.publicKeys = {'ssh-rsa': pubKey}
+sshFactory.privateKeys = {'ssh-rsa': privKey}
+
+# Define username and password combos that will allow access to our shell
+users = {'admin': 'aaa'}
+
+# Register our Credentials Checker
+sshFactory.portal.registerChecker(SSHChecker(users))
+
+# Run the reactor server loop
+reactor.listenTCP(2222, sshFactory)
+reactor.run()
