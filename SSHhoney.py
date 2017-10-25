@@ -7,46 +7,51 @@ from twisted.internet import reactor
 from zope.interface import implements
 
 
-class SSHDemoProtocol(recvline.HistoricRecvLine):
+class SSHProtocol(recvline.HistoricRecvLine):
+
 	def __init__(self, user):
 		self.user = user
+		self.commands = ["help", "echo", "whoami", "quit", "clear"]
 	
+	# Display banner when login attempt succeeds
 	def connectionMade(self):
 		recvline.HistoricRecvLine.connectionMade(self)
 		self.terminal.write("Welcome to my SSH server.\n")
 		self.showPrompt()
-		return
 
+	# Display the shell prompt
 	def showPrompt(self):
 		self.terminal.write("$ ")
-	
-	def getCommandFunc(self, cmd):
-		return getattr(self, 'do_' + cmd, None)
 
+	# Process every line received from the user
 	def lineReceived(self, line):
+
+		# Log everything a user types
+		try:
+			lfile = open("./CommandLogs.csv", 'a')
+			lfile.write(line + "\n")
+			lfile.close()
+		except IOError:
+			pass
+
 		line = line.strip()
-		func = None
-		if line:
-			cmdAndArgs = line.split()
-			cmd = cmdAndArgs[0]
-			args = cmdAndArgs[1:]
-			func = self.getCommandFunc(cmd)
-		if func:
+		
+		# Check if the given command has been implemented
+		if line.split(" ")[0] not in self.commands:
+			self.terminal.write("Command not found.")
+			self.terminal.nextLine()
+			self.showPrompt()
+		else:	# Otherwise execute that function
+			func = getattr(self, 'do_' + line.split(" ")[0], None)
 			try:
+				args = line.split(" ")[1 : ]
 				func(*args)
 			except Exception, e:
 				self.terminal.write("Error: %s" % e)
 				self.terminal.nextLine()
-		else:
-			self.terminal.write("No such command.")
-			self.terminal.nextLine()
-			self.showPrompt()
 	
 	def do_help(self):
-		publicMethods = filter(
-		lambda funcname: funcname.startswith('do_'), dir(self))
-		commands = [cmd.replace('do_', '', 1) for cmd in publicMethods]
-		self.terminal.write("Commands: " + " ".join(commands))
+		self.terminal.write("Commands: " + " ".join(self.commands))
 		self.terminal.nextLine()
 		self.showPrompt()
 
@@ -61,7 +66,6 @@ class SSHDemoProtocol(recvline.HistoricRecvLine):
 		self.showPrompt()
 
 	def do_quit(self):
-		self.terminal.write("Thanks for playing!")
 		self.terminal.nextLine()
 		self.terminal.loseConnection()
 
@@ -70,7 +74,7 @@ class SSHDemoProtocol(recvline.HistoricRecvLine):
 		self.showPrompt()
 
 
-class SSHDemoAvatar(avatar.ConchUser):
+class SSHAvatar(avatar.ConchUser):
 	implements(ISession)
 
 	def __init__(self, username):
@@ -79,7 +83,7 @@ class SSHDemoAvatar(avatar.ConchUser):
 		self.channelLookup.update({'session': session.SSHSession})
 
 	def openShell(self, protocol):
-		serverProtocol = insults.ServerProtocol(SSHDemoProtocol, self)
+		serverProtocol = insults.ServerProtocol(SSHProtocol, self)
 		serverProtocol.makeConnection(protocol)
 		protocol.makeConnection(session.wrapProtocol(serverProtocol))
 
@@ -94,17 +98,17 @@ class SSHDemoAvatar(avatar.ConchUser):
 
 
 
-class SSHDemoRealm(object):
+class SSHRealm(object):
 	implements(portal.IRealm)
 
 	def requestAvatar(self, avatarId, mind, *interfaces):
 		if IConchUser in interfaces:
-			return interfaces[0], SSHDemoAvatar(avatarId), lambda: None
+			return interfaces[0], SSHAvatar(avatarId), lambda: None
 		else:
 			raise NotImplementedError("No supported interfaces found.")
 
 
-class SSHChecker(checkers.InMemoryUsernamePasswordDatabaseDontUse):
+class SSHCredentialsChecker(checkers.InMemoryUsernamePasswordDatabaseDontUse):
 		
 	def __init__(self, users):
 		self.authorizedUsers = users	# Username and password combos that will allow access to our shell
@@ -144,7 +148,7 @@ def getRSAKeys():
 
 # Initialize Twisted's protocol factory
 sshFactory = factory.SSHFactory()
-sshFactory.portal = portal.Portal(SSHDemoRealm())
+sshFactory.portal = portal.Portal(SSHRealm())
 
 # Setup the server's public and private keys
 pubKey, privKey = getRSAKeys()
@@ -153,10 +157,10 @@ sshFactory.privateKeys = {'ssh-rsa': privKey}
 
 # Define username and password combos that will allow access to our shell
 # Let it be empty so all attempts are failed
-users = {}
+users = {'user': 'p@$$w0rd'}
 
 # Register our Credentials Checker
-sshFactory.portal.registerChecker(SSHChecker(users))
+sshFactory.portal.registerChecker(SSHCredentialsChecker(users))
 
 # Run the reactor server loop
 reactor.listenTCP(2222, sshFactory)
