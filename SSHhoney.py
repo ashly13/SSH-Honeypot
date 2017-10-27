@@ -6,7 +6,7 @@ from twisted.cred import portal, checkers
 from twisted.internet import reactor
 from zope.interface import implements
 
-
+# Implementation of our SSH Protocol
 class SSHProtocol(recvline.HistoricRecvLine):
 
 	def __init__(self, user):
@@ -136,6 +136,7 @@ class SSHCredentialsChecker(checkers.InMemoryUsernamePasswordDatabaseDontUse):
 			return failure.Failure(UnauthorizedLogin)	# Authentication failure
 
 
+# Keys were generated using ssh-keygen command
 def getRSAKeys():
 	with open('./.ssh/key') as privateBlobFile:
 		privateBlob = privateBlobFile.read()
@@ -156,7 +157,7 @@ sshFactory.publicKeys = {'ssh-rsa': pubKey}
 sshFactory.privateKeys = {'ssh-rsa': privKey}
 
 # Define username and password combos that will allow access to our shell
-# Let it be empty so all attempts are failed
+# Let it be empty for all attempts to be failed
 users = {'user': 'p@$$w0rd'}
 
 # Register our Credentials Checker
